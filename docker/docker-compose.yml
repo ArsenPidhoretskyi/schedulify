@@ -1,0 +1,88 @@
+version: '3.9'
+name: 'schedulify'
+
+# Configurations shared between api service, celery and celery beat.
+x-base-api: &base-api
+  env_file:
+    - ../api/.env
+  volumes:
+    - ../api:/opt/api
+  build:
+    context: ..
+    dockerfile: docker/images/api/Dockerfile
+    target: local
+
+services:
+  api:
+    <<: *base-api
+    command: ["make", "run"]
+    depends_on:
+      - postgres-db
+      - redis-db
+      - mailpit
+      - minio
+      - createbuckets
+    ports:
+      - ${LOCAL_IP:-127.0.0.1}:${API_LOCAL_PORT:-8000}:8000
+
+  celery-worker:
+    <<: *base-api
+    command: ["make", "celery-worker-run"]
+    depends_on:
+      - api
+      - redis-db
+
+  celery-beat:
+    <<: *base-api
+    command: ["make", "celery-beat-run"]
+    depends_on:
+      - api
+      - redis-db
+
+  postgres-db:
+    environment:
+      POSTGRES_USER: schedulify_user
+      POSTGRES_DB: schedulify_db
+      POSTGRES_PASSWORD: schedulify_password
+    image: postgres:15.0-alpine
+    volumes:
+      - pg_data:/var/lib/postgresql/data:rw
+
+  redis-db:
+    image: redis:7.0-alpine
+    volumes:
+      - redis_data:/data:rw
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+     - ${LOCAL_IP:-127.0.0.1}:${MAILPIT_LOCAL_PORT:-8025}:8025
+
+  minio:
+    image: minio/minio:latest
+    ports:
+     - ${LOCAL_IP:-127.0.0.1}:${MINIO_LOCAL_PORT:-9000}:9000
+     - ${LOCAL_IP:-127.0.0.1}:${MINIO_CONSOLE_LOCAL_PORT:-9001}:9001
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+     - minio_data:/data
+    command: [ "server", "--console-address", ":9001", "/data" ]
+
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+     /bin/sh -c "
+     /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+     /usr/bin/mc mb --ignore-existing myminio/storage;
+     /usr/bin/mc anonymous set download myminio/storage;
+     exit 0;
+     "
+
+volumes:
+  pg_data: {}
+  redis_data: {}
+  minio_data: {}
