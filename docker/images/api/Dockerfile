@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   # to install `poetry`
   curl
 
+RUN apt-get update &&\
+    apt-get install -y binutils libproj-dev gdal-bin
+
 RUN pip install --no-cache -U pip setuptools \
     && rm -rf /root/.cache/pip \
     && curl -sSL https://install.python-poetry.org | python3 -
@@ -39,4 +42,4 @@ RUN poetry install --no-root --no-cache --no-ansi --no-interaction --with dev \
 
 FROM base as live
 
-COPY ./api /opt/api
+ADD ./api /opt/api
